@@ -8,51 +8,38 @@ import { Vote } from "../models/index";
 export default async (
   interaction: StringSelectMenuInteraction,
 ): Promise<void> => {
-  try {
-    // Get the option ID from the custom ID
-    // Format: option_123 where 123 is the option ID
-    const customId = interaction.customId;
-    const optionId = parseInt(customId.split("_")[1]);
+  // Get the option ID from the custom ID
+  // Format: option_123 where 123 is the option ID
+  const customId = interaction.customId;
+  const optionId = parseInt(customId.split("_")[1]);
+  // Get the selected star value
+  const stars = parseInt(interaction.values[0]);
+  const userId = interaction.user.id;
 
-    // Get the selected star value
-    const stars = parseInt(interaction.values[0]);
-
-    // Create a unique hash for the user
-    const userId = interaction.user.id;
-
-    // Check if the user already voted for this option
-    const existingVote = await Vote.findOne({
-      where: {
-        userId: userId,
-        optionId: optionId,
-      },
+  // Check if the user already voted for this option
+  const existingVote = await Vote.findOne({
+    where: {
+      userId: userId,
+      optionId: optionId,
+    },
+  });
+  if (existingVote) {
+    // Update existing vote
+    await existingVote.update({ stars: stars });
+    await interaction.reply({
+      content: `You changed your vote to ${stars} star${stars !== 1 ? "s" : ""} for: ${(await existingVote.getOption()).format()}`,
+      ephemeral: true,
+    });
+  } else {
+    // Create new vote
+    await Vote.create({
+      userId: userId,
+      optionId: optionId,
+      stars: stars,
     });
 
-    if (existingVote) {
-      // Update existing vote
-      await existingVote.update({ stars: stars });
-      await interaction.reply({
-        content: `You changed your vote to ${stars} star${stars !== 1 ? "s" : ""} for this option!`,
-        ephemeral: true,
-      });
-    } else {
-      // Create new vote
-      await Vote.create({
-        userId: userId,
-        optionId: optionId,
-        stars: stars,
-      });
-
-      await interaction.reply({
-        content: `You voted with ${stars} star${stars !== 1 ? "s" : ""}!`,
-        ephemeral: true,
-      });
-    }
-  } catch (error) {
-    console.error("Error handling vote interaction:", error);
     await interaction.reply({
-      content:
-        "There was an error processing your vote. Please try again later.",
+      content: `You voted with ${stars} star${stars !== 1 ? "s" : ""}!`,
       ephemeral: true,
     });
   }

@@ -1,5 +1,6 @@
 import { Sequelize, DataTypes, Model, Optional } from "sequelize";
 import path from "path";
+import { emojiNumberMap } from "../utils";
 
 // Define interfaces for model attributes
 interface PollAttributes {
@@ -27,6 +28,20 @@ interface VoteAttributes {
 
 interface VoteCreationAttributes extends Optional<VoteAttributes, "id"> {}
 
+class VoteResult {
+  option: Option;
+  score: number;
+
+  constructor(option: Option, score: number) {
+    this.option = option;
+    this.score = score;
+  }
+
+  toString(): string {
+    return `${emojiNumberMap[this.option.index]} ${this.option.text}: ${this.score} :star:`;
+  }
+}
+
 // Define model classes
 class Poll
   extends Model<PollAttributes, PollCreationAttributes>
@@ -42,6 +57,30 @@ class Poll
   // Associations
   public getOptions!: () => Promise<Option[]>;
   public addOption!: (option: Option) => Promise<void>;
+
+  public async getResults(): Promise<VoteResult[]> {
+    const options = await this.getOptions();
+    const votes = await Promise.all(options.map((option) => option.getVotes()));
+
+    const scores = votes.map((vote) =>
+      vote.reduce((acc, vote) => acc + vote.stars, 0),
+    );
+
+    return options.map(
+      (option, index) => new VoteResult(option, scores[index]),
+    );
+  }
+
+  public async getWinner(): Promise<VoteResult> {
+    const results = await this.getResults();
+    return results.sort((a, b) => b.score - a.score)[0];
+  }
+
+  public async getNVoters(): Promise<number> {
+    const options = await this.getOptions();
+    const votes = await Promise.all(options.map((option) => option.getVotes()));
+    return votes.length;
+  }
 }
 
 class Option
@@ -59,6 +98,10 @@ class Option
   public getPoll!: () => Promise<Poll>;
   public getVotes!: () => Promise<Vote[]>;
   public addVote!: (vote: Vote) => Promise<void>;
+
+  public format(): string {
+    return `${emojiNumberMap[this.index]} ${this.text}`;
+  }
 }
 
 class Vote

@@ -1,0 +1,7 @@
+export const emojiNumberMap: Record<number, string> = {
+  0: "1️⃣",
+  1: "2️⃣",
+  2: "3️⃣",
+  3: "4️⃣",
+  4: "5️⃣",
+};

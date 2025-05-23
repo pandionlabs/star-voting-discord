@@ -1,0 +1,13 @@
+services:
+  bot:
+    build: .
+    container_name: star-voting-discord-bot
+    restart: unless-stopped
+    volumes:
+      - ./database.sqlite:/app/database.sqlite
+      - ./logs:/app/logs
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M

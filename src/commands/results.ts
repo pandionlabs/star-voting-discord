@@ -3,7 +3,7 @@ import { ChatInputCommandInteraction, EmbedBuilder } from "discord.js";
 import { Poll } from "../models/index";
 import { emojiNumberMap } from "../utils";
 
-export const data = new SlashCommandBuilder()
+export const resultsCommand = new SlashCommandBuilder()
   .setName("results")
   .setDescription("Get the results of a poll")
   .addStringOption((option) =>
@@ -13,7 +13,7 @@ export const data = new SlashCommandBuilder()
       .setRequired(true),
   );
 
-export async function execute(
+export async function resultsCallback(
   interaction: ChatInputCommandInteraction,
 ): Promise<void> {
   const pollId = interaction.options.getString("poll_id", true);

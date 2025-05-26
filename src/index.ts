@@ -1,5 +1,3 @@
-import fs from "fs";
-import path from "path";
 import {
   Client,
   GatewayIntentBits,
@@ -7,20 +5,19 @@ import {
   Events,
   REST,
   Routes,
+  ChatInputCommandInteraction,
+  SlashCommandOptionsOnlyBuilder,
 } from "discord.js";
-import dotenv from "dotenv";
+import { config } from "dotenv";
 import { syncDatabase } from "./models/index";
-import votingSelectHandler from "./components/votingSelectHandler";
-
-// Extend Client interface to include commands
-declare module "discord.js" {
-  interface Client {
-    commands: Collection<string, any>;
-  }
-}
-
+import {
+  createPollCommand,
+  createPollCallback,
+  votingSelectHandler,
+} from "./commands/create_poll";
+import { resultsCommand, resultsCallback } from "./commands/results";
 // Load environment variables
-dotenv.config();
+config();
 
 // Check for required environment variables
 if (!process.env.DISCORD_TOKEN || !process.env.GUILD_ID) {
@@ -39,31 +36,27 @@ const client = new Client({
   ],
 });
 
-// Collection for commands
-client.commands = new Collection();
-
-// Load commands
-const commandsPath = path.join(__dirname, "commands");
-const commandFiles = fs
-  .readdirSync(commandsPath)
-  .filter((file) => file.endsWith(".js") || file.endsWith(".ts"));
-
-for (const file of commandFiles) {
-  const filePath = path.join(commandsPath, file);
-  const command = require(filePath);
-  if ("data" in command && "execute" in command) {
-    client.commands.set(command.data.name, command);
-  } else {
-    console.log(
-      `[WARNING] The command at ${filePath} is missing a required "data" or "execute" property.`,
-    );
-  }
+interface Command {
+  name: string;
+  slashCommand: SlashCommandOptionsOnlyBuilder;
+  callback: (interaction: ChatInputCommandInteraction) => Promise<void>;
 }
 
-// Register command interaction handler
+const commands = new Collection<string, Command>();
+commands.set("create_poll", {
+  name: "create_poll",
+  slashCommand: createPollCommand,
+  callback: createPollCallback,
+});
+commands.set("results", {
+  name: "results",
+  slashCommand: resultsCommand,
+  callback: resultsCallback,
+});
+
 client.on(Events.InteractionCreate, async (interaction) => {
   if (interaction.isChatInputCommand()) {
-    const command = client.commands.get(interaction.commandName);
+    const command = commands.get(interaction.commandName);
 
     if (!command) {
       console.error(
@@ -73,7 +66,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
 
     try {
-      await command.execute(interaction);
+      await command["callback"](interaction);
     } catch (error) {
       console.error(error);
       if (interaction.replied || interaction.deferred) {
@@ -106,17 +99,15 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
 // Register slash commands
 const deployCommands = async (): Promise<void> => {
-  const commands = [];
-  for (const file of commandFiles) {
-    const command = require(`./commands/${file}`);
-    commands.push(command.data.toJSON());
-  }
+  const commandMessages = Array.from(commands.values()).map((command) =>
+    command.slashCommand.toJSON(),
+  );
 
   const rest = new REST().setToken(process.env.DISCORD_TOKEN || "");
 
   try {
     console.log(
-      `Started refreshing ${commands.length} application (/) commands.`,
+      `Started refreshing ${commandMessages.length} application (/) commands.`,
     );
 
     // Deploy commands to the specified guild
@@ -126,7 +117,7 @@ const deployCommands = async (): Promise<void> => {
           client.user.id,
           process.env.GUILD_ID || "",
         ),
-        { body: commands },
+        { body: commandMessages },
       );
 
       console.log(

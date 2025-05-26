@@ -99,10 +99,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
 // Register slash commands
 const deployCommands = async (): Promise<void> => {
-  const commandMessages = [];
-  for (const command in commands) {
-    commandMessages.push(command["slashCommand"].toJSON());
-  }
+  const commandMessages = Array.from(commands.values()).map((command) =>
+    command.slashCommand.toJSON(),
+  );
 
   const rest = new REST().setToken(process.env.DISCORD_TOKEN || "");
 

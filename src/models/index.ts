@@ -38,7 +38,7 @@ class VoteResult {
   }
 
   toString(): string {
-    return `${emojiNumberMap[this.option.index]} ${this.option.text}: ${this.score} :star:`;
+    return `${emojiNumberMap[this.option.index]} ${this.option.text}: ${this.score.toFixed(2)} :star:`;
   }
 }
 
@@ -62,9 +62,11 @@ class Poll
     const options = await this.getOptions();
     const votes = await Promise.all(options.map((option) => option.getVotes()));
 
-    const scores = votes.map((vote) =>
-      vote.reduce((acc, vote) => acc + vote.stars, 0),
-    );
+    const scores = votes.map((vote) => {
+      if (vote.length === 0) return 0;
+      const sum = vote.reduce((acc, vote) => acc + vote.stars, 0);
+      return sum / vote.length;
+    });
 
     return options.map(
       (option, index) => new VoteResult(option, scores[index]),

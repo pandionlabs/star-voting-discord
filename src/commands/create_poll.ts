@@ -132,7 +132,7 @@ export async function createPollCallback(
     .setTitle(
       `Vote now: ${question.substring(0, 10)}${question.length > 10 ? "..." : ""}`,
     )
-    .setDescription("Here is your STAR voting poll.")
+    .setDescription("Here is your STAR voting poll.\n Give your top choice(s) 5 stars. \nGive your bottom choice(s) 0 stars.\n Score the rest with 2, 3, or 4 stars.")
     .addFields([
       { name: "Question", value: question },
       {

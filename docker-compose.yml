@@ -4,7 +4,7 @@ services:
     container_name: star-voting-discord-bot
     restart: unless-stopped
     volumes:
-      - ./database.sqlite:/app/database.sqlite
+      - ./data:/app/data
       - ./logs:/app/logs
     deploy:
       resources:

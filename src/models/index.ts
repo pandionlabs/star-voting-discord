@@ -57,32 +57,6 @@ class Poll
   // Associations
   public getOptions!: () => Promise<Option[]>;
   public addOption!: (option: Option) => Promise<void>;
-
-  public async getResults(): Promise<VoteResult[]> {
-    const options = await this.getOptions();
-    const votes = await Promise.all(options.map((option) => option.getVotes()));
-
-    const scores = votes.map((vote) => {
-      if (vote.length === 0) return 0;
-      const sum = vote.reduce((acc, vote) => acc + vote.stars, 0);
-      return sum / vote.length;
-    });
-
-    return options.map(
-      (option, index) => new VoteResult(option, scores[index]),
-    );
-  }
-
-  public async getWinner(): Promise<VoteResult> {
-    const results = await this.getResults();
-    return results.sort((a, b) => b.score - a.score)[0];
-  }
-
-  public async getNVoters(): Promise<number> {
-    const options = await this.getOptions();
-    const votes = await Promise.all(options.map((option) => option.getVotes()));
-    return votes.length;
-  }
 }
 
 class Option

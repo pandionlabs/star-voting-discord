@@ -31,7 +31,7 @@ export async function resultsCallback(
 
   const pollResults = await new PollResults(poll).initialize();
   const optionResults = pollResults.optionResults.sort(
-    (a, b) => b.option.index - a.option.index,
+    (a, b) => a.option.index - b.option.index,
   );
 
   const [winner, preferedBy] = pollResults.winnerResult;

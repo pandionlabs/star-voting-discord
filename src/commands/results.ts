@@ -30,6 +30,9 @@ export async function resultsCallback(
   }
 
   const pollResults = await new PollResults(poll).initialize();
+  const optionResults = pollResults.optionResults.sort(
+    (a, b) => b.option.index - a.option.index,
+  );
 
   const [winner, preferedBy] = pollResults.winnerResult;
   const nVotes = await pollResults.getNVoters();
@@ -46,7 +49,7 @@ export async function resultsCallback(
       },
       {
         name: "**All Results**",
-        value: pollResults.optionResults
+        value: optionResults
           .map((result) => `- ${result.toString()}`)
           .join("\n"),
         inline: false,

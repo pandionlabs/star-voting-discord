@@ -55,7 +55,7 @@ export async function resultsCallback(
         inline: false,
       },
       {
-        name: "number votes",
+        name: "Number of votes", 
         value: nVotes.toString(),
         inline: false,
       },

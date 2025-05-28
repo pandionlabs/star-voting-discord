@@ -2,6 +2,7 @@ import { SlashCommandBuilder } from "@discordjs/builders";
 import { ChatInputCommandInteraction, EmbedBuilder } from "discord.js";
 import { Poll } from "../models/index";
 import { emojiNumberMap } from "../utils";
+import { PollResults } from "../star-voting";
 
 export const resultsCommand = new SlashCommandBuilder()
   .setName("results")
@@ -28,9 +29,10 @@ export async function resultsCallback(
     return;
   }
 
-  const results = await poll.getResults();
-  const winner = await poll.getWinner();
-  const nVotes = await poll.getNVoters();
+  const pollResults = await new PollResults(poll).initialize();
+
+  const [winner, preferedBy] = pollResults.winnerResult;
+  const nVotes = await pollResults.getNVoters();
 
   const embed = new EmbedBuilder()
     .setTitle(`Poll Results: ${poll.question}`)
@@ -39,12 +41,14 @@ export async function resultsCallback(
     .addFields(
       {
         name: "🏆 Winner",
-        value: winner.toString(),
+        value: `${winner.toString()}\n\n net preference of: ${preferedBy.toString()} over second best option`,
         inline: false,
       },
       {
         name: "**All Results**",
-        value: results.map((result) => `- ${result.toString()}`).join("\n"),
+        value: pollResults.optionResults
+          .map((result) => `- ${result.toString()}`)
+          .join("\n"),
         inline: false,
       },
       {

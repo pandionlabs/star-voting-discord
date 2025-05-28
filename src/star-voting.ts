@@ -1,47 +1,92 @@
 import { Option, Poll, Vote } from "./models/index";
 import { emojiNumberMap } from "./utils";
+import assert from "assert";
 
 class OptionResult {
-  public option: Option;
-  public score: number;
-  public preferredOverBy: Map<Option, number>; // how many times this option was preferred over another option
-  public numAbstains: number;
+  public option!: Option;
+  public score!: number;
+  public numVoters!: number;
+  public preferredOverBy!: Map<Option, number>;
+  public numAbstains!: number;
 
-  constructor(optionVotes: Vote[], otherOptionsVotes: Vote[][]) {
+  constructor() {
+    this.preferredOverBy = new Map<Option, number>();
+  }
+
+  public async initialize(
+    optionVotes: Vote[],
+    allOptionsVotes: Vote[][],
+  ): Promise<void> {
+    await this.setOption(optionVotes);
+    this.calculateScore(optionVotes);
+    const userVotes = this.groupVotesByUser(allOptionsVotes);
+    this.numVoters = optionVotes.length;
+    this.calculateAbstains(optionVotes, userVotes);
+    await this.calculatePreferences(optionVotes, userVotes);
+  }
+
+  private async setOption(optionVotes: Vote[]): Promise<void> {
     this.option = await optionVotes[0].getOption();
+  }
+
+  private calculateScore(optionVotes: Vote[]): void {
     const sumScores = optionVotes.reduce((acc, vote) => acc + vote.stars, 0);
     this.score = sumScores / optionVotes.length;
-    // group votes by user id
+  }
+
+  private groupVotesByUser(allOptionsVotes: Vote[][]): Map<string, Vote[]> {
     const userVotes = new Map<string, Vote[]>();
-    otherOptionsVotes.forEach((optionVotes) => {
+    allOptionsVotes.forEach((optionVotes) => {
+      if (optionVotes.length > 0 && optionVotes[0].optionId === this.option.id)
+        return; // skip comparison with self
       optionVotes.forEach((vote) => {
         if (!userVotes.has(vote.userId)) userVotes.set(vote.userId, []);
         userVotes.get(vote.userId)!.push(vote);
       });
     });
+    return userVotes;
+  }
 
+  private calculateAbstains(
+    optionVotes: Vote[],
+    userVotes: Map<string, Vote[]>,
+  ): void {
     // an abstain is either a 0 stars or a userId that voted for at least one other option but not this one.
     const abstainsImplicit = userVotes.size - optionVotes.length;
-    const abstainsExplicit = optionVotes.filter((vote) => vote.stars === 0).length;
+    const abstainsExplicit = optionVotes.filter(
+      (vote) => vote.stars === 0,
+    ).length;
     this.numAbstains = abstainsImplicit + abstainsExplicit;
+  }
 
+  private async calculatePreferences(
+    optionVotes: Vote[],
+    userVotes: Map<string, Vote[]>,
+  ): Promise<void> {
     // preferredOverBy
     // iterate on each vote given for an option
-    optionVotes.forEach((vote) => {
+    for (const vote of optionVotes) {
       const option = await vote.getOption();
       // see if the same user voted on other options
       const userVotesForOtherOptions = userVotes.get(vote.userId);
-      if (!userVotesForOtherOptions) return;
-      // filter the same option
-      const votesOtherOptions = userVotesForOtherOptions.filter((otherVote) => otherVote.getOption().then(
-        (otherOption) => otherOption.id == option.id
-      ));
+      if (!userVotesForOtherOptions) continue;
+      // filter out the same option
+      const votesOtherOptions = userVotesForOtherOptions.filter(
+        (otherVote) => vote.optionId !== otherVote.optionId,
+      );
       votesOtherOptions.forEach((otherVote) => {
-        const netPreference = vote.stars > otherVote.stars ? 1 : vote.stars === otherVote.stars ? 0 : -1;
-        this.preferredOverBy.set(option, (this.preferredOverBy.get(option) || 0) + netPreference);
-      })
-    })
-
+        const netPreference =
+          vote.stars > otherVote.stars
+            ? 1
+            : vote.stars === otherVote.stars
+              ? 0
+              : -1;
+        this.preferredOverBy.set(
+          option,
+          (this.preferredOverBy.get(option) || 0) + netPreference,
+        );
+      });
+    }
   }
 
   toString(): string {
@@ -50,40 +95,67 @@ class OptionResult {
 }
 
 class PollResults {
-  public readonly OptionResults: OptionResult[];
-  constructor(public readonly poll: Poll) {
-    const options = await poll.getOptions();
-    const votes = await Promise.all(options.map((option) => option.getVotes()));
+  public readonly optionResults: OptionResult[] = [];
+  public winnerResult!: [OptionResult, number];
 
-    const optionResults = votes.map((vote) => {
-      const otherVotes = votes.filter((otherVote) => otherVote.optionId !== vote.optionId);
-      return new OptionResult(vote, otherVotes);
-    });
+  constructor(public readonly poll: Poll) {}
 
-
-    const sortedScores = scores.sort((a, b) => b - a);
-
-    const best = sortedScores[0];
-    const secondBest = sortedScores[1];
-
-
-
-
+  public async initialize(): Promise<this> {
+    const allOptionsVotes = await this.fetchAllOptionsVotes();
+    await this.createOptionResults(allOptionsVotes);
+    this.determineWinner();
+    return this;
   }
 
-
+  private async fetchAllOptionsVotes(): Promise<Vote[][]> {
+    const options = await this.poll.getOptions();
+    return await Promise.all(options.map((option) => option.getVotes()));
   }
 
-  public async getWinner(): Promise<VoteResult> {
-    const results = await this.getResults();
-    return results.sort((a, b) => b.score - a.score)[0];
+  private async createOptionResults(allOptionsVotes: Vote[][]): Promise<void> {
+    for (const optionVotes of allOptionsVotes) {
+      const optionResult = new OptionResult();
+      await optionResult.initialize(optionVotes, allOptionsVotes);
+      this.optionResults.push(optionResult);
+    }
   }
 
+  private determineWinner(): void {
+    const sortedOptionResults = this.optionResults.sort(
+      (a, b) => b.score - a.score,
+    );
+
+    const bestScore = sortedOptionResults[0];
+    const secondBestScore = sortedOptionResults[1];
+
+    if (bestScore.numVoters == 1 && secondBestScore.numVoters == 1) {
+      // If both options have only one voter, we cannot determine a winner
+      this.winnerResult = [bestScore, 0];
+      return;
+    }
+
+    assert(
+      bestScore.preferredOverBy.get(secondBestScore.option) ===
+        -(secondBestScore.preferredOverBy.get(bestScore.option) || 0),
+    );
+    const winnerResult =
+      (bestScore.preferredOverBy.get(secondBestScore.option) || 0) > 0
+        ? bestScore
+        : secondBestScore;
+    this.winnerResult = [
+      winnerResult,
+      winnerResult.preferredOverBy.get(secondBestScore.option),
+    ];
+  }
+
+  // TODO: refactor this to not query the database again
   public async getNVoters(): Promise<number> {
-    const options = await this.getOptions();
+    const options = await this.poll.getOptions();
     const votersPerOption = await Promise.all(
       options.map(async (option) => (await option.getVotes()).length),
     );
     return Math.max(...votersPerOption);
   }
 }
+
+export { OptionResult, PollResults };

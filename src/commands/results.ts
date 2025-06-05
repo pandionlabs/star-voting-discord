@@ -35,7 +35,7 @@ export async function resultsCallback(
   );
 
   const [winner, preferedBy] = pollResults.winnerResult;
-  const nVotes = await pollResults.getNVoters();
+  const nVotes = await pollResults.numVoters;
 
   const embed = new EmbedBuilder()
     .setTitle(`Poll Results: ${poll.question}`)

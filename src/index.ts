@@ -16,6 +16,7 @@ import {
   votingSelectHandler,
 } from "./commands/create_poll";
 import { resultsCommand, resultsCallback } from "./commands/results";
+import { nVotersCommand, nVotersCallback } from "./commands/n_voters";
 // Load environment variables
 config();
 
@@ -52,6 +53,11 @@ commands.set("results", {
   name: "results",
   slashCommand: resultsCommand,
   callback: resultsCallback,
+});
+commands.set("n_voters", {
+  name: "n_voters",
+  slashCommand: nVotersCommand,
+  callback: nVotersCallback,
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {

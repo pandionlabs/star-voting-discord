@@ -124,6 +124,10 @@ export async function createPollCallback(
             .setLabel(`${emojiPrefix} ⭐⭐⭐⭐⭐`)
             .setValue("5")
             .setDescription("5 stars"),
+          new StringSelectMenuOptionBuilder()
+            .setLabel(`${emojiPrefix} ABSTAIN`)
+            .setValue("0")
+            .setDescription("Abstain"),
         ]),
     );
   });

@@ -44,8 +44,6 @@ class OptionResult {
   private groupVotesByUser(allOptionsVotes: Vote[][]): Map<string, Vote[]> {
     const userVotes = new Map<string, Vote[]>();
     allOptionsVotes.forEach((optionVotes) => {
-      // if (optionVotes.length > 0 && optionVotes[0].optionId === this.option.id)
-      //   return; // skip comparison with self
       optionVotes.forEach((vote) => {
         if (!userVotes.has(vote.userId)) userVotes.set(vote.userId, []);
         userVotes.get(vote.userId)!.push(vote);
@@ -75,9 +73,9 @@ class OptionResult {
     for (const vote of optionVotes) {
       const option = await vote.getOption();
       // see if the same user voted on other options
-      const userVotesOtherOptions = userVotes.get(vote.userId).filter(
-        (otherVote) => otherVote.optionId !== vote.optionId,
-      );
+      const userVotesOtherOptions = userVotes
+        .get(vote.userId)!
+        .filter((otherVote) => otherVote.optionId !== vote.optionId);
       if (!userVotesOtherOptions) continue;
       userVotesOtherOptions.forEach((otherVote) => {
         const netPreference =
@@ -86,8 +84,9 @@ class OptionResult {
             : vote.stars === otherVote.stars
               ? 0
               : -1;
-        
-        const currentPreference = this.preferredOverBy.get(otherVote.optionId) || 0;
+
+        const currentPreference =
+          this.preferredOverBy.get(otherVote.optionId) || 0;
         this.preferredOverBy.set(
           otherVote.optionId,
           currentPreference + netPreference,
@@ -103,7 +102,7 @@ class OptionResult {
 
 class PollResults {
   public readonly optionResults: OptionResult[] = [];
-  public winnerResult!: [OptionResult, number];
+  public winnerResult: [OptionResult, number];
   public numVoters: number;
 
   constructor(public readonly poll: Poll) {}
@@ -117,7 +116,7 @@ class PollResults {
       return this; // No options, no results
     }
     this.determineWinner();
-    this.numVoters = await this.getNVoters();
+    this.setNumVoters(allOptionsVotes);
     return this;
   }
 
@@ -129,47 +128,74 @@ class PollResults {
   private async createOptionResults(allOptionsVotes: Vote[][]): Promise<void> {
     for (const optionVotes of allOptionsVotes) {
       const optionResult = new OptionResult();
-      if (optionVotes.length === 0) continue // Skip options with no votes
+      if (optionVotes.length === 0) continue; // Skip options with no votes
       await optionResult.initialize(optionVotes, allOptionsVotes);
       this.optionResults.push(optionResult);
     }
-    this.optionResults.sort(
-      (a, b) => b.score - a.score,
-    );
+    this.optionResults.sort((a, b) => b.score - a.score);
   }
 
   private determineWinner(): void {
-
     const bestScore = this.optionResults[0];
     const secondBestScore = this.optionResults[1];
 
-    // If both options have only one voter or no votes on the second option, we cannot determine a winner using preferences
-    if (!secondBestScore || (bestScore.numVoters <= 1 && secondBestScore.numVoters == 1)) {
+    // If there's no second option, or if both top options have only one voter each,
+    // the winner is the one with the highest score (bestScore).
+    // `numVoters` here is specific to the option, not total poll voters.
+    // In PollResults an OptionResult is only created if optionVotes.length > 0, so numVoters >= 1.
+    // The runoff preference score is 0 in this scenario, as no meaningful runoff comparison can be made.
+    if (
+      !secondBestScore ||
+      (bestScore.numVoters === 1 && secondBestScore.numVoters === 1)
+    ) {
       this.winnerResult = [bestScore, 0];
       return;
     }
 
+    // This assertion checks the integrity of preference calculation.
+    // It ensures that the preference of A over B is the negative of B over A.
+    // The `|| 0` handles cases where an option might not be in the preferredOverBy map if no common voters.
+    const preferenceOfBestOverSecond =
+      bestScore.preferredOverBy.get(secondBestScore.option.id) || 0;
+    const preferenceOfSecondOverBest =
+      secondBestScore.preferredOverBy.get(bestScore.option.id) || 0;
+
     assert(
-      bestScore.preferredOverBy.get(secondBestScore.option.id) ===
-        -(secondBestScore.preferredOverBy.get(bestScore.option.id) || 0),
+      preferenceOfBestOverSecond === -preferenceOfSecondOverBest,
+      `Symmetric preference check failed. bestScore.option.id: ${bestScore.option.id}, secondBestScore.option.id: ${secondBestScore.option.id}, pref(best/second): ${preferenceOfBestOverSecond}, pref(second/best): ${preferenceOfSecondOverBest}. This is a bug in \`calculatePreferences\`.`,
     );
-    const winnerResult =
-      (bestScore.preferredOverBy.get(secondBestScore.option.id) || 0) > 0
-        ? bestScore
-        : secondBestScore;
-    this.winnerResult = [
-      winnerResult,
-      winnerResult.preferredOverBy.get(secondBestScore.option.id),
-    ];
+
+    let winningCandidate: OptionResult;
+    let runoffPreferenceValue: number;
+
+    if (preferenceOfBestOverSecond > 0) {
+      // bestScore is preferred over secondBestScore.
+      winningCandidate = bestScore;
+      runoffPreferenceValue = preferenceOfBestOverSecond;
+    } else if (preferenceOfBestOverSecond < 0) {
+      // secondBestScore is preferred over bestScore.
+      // This is where the different between Star voting and simple score voting shows up!
+      winningCandidate = secondBestScore;
+      // runoffPreferenceValue should be the positive margin of the winner.
+      runoffPreferenceValue = -preferenceOfBestOverSecond;
+    } else {
+      // Preferences are tied (preferenceOfBestOverSecond === 0).
+      // In this case, the candidate with the higher original score wins.
+      // bestScore is already determined to have the higher (or equal) score due to initial sorting.
+      winningCandidate = bestScore;
+      runoffPreferenceValue = 0; // Preference score difference is 0 for a tie.
+    }
+
+    this.winnerResult = [winningCandidate, runoffPreferenceValue];
   }
 
-  // TODO: refactor this to not query the database again
-  async getNVoters(): Promise<number> {
-    const options = await this.poll.getOptions();
-    const votersPerOption = await Promise.all(
-      options.map(async (option) => (await option.getVotes()).length),
+  private setNumVoters(allOptionsVotes: Vote[][]): void {
+    const allUserIds = new Set<string>();
+    // Iterate over all options and then over all votes to find every unique user ID
+    allOptionsVotes.forEach((optionVotes) =>
+      optionVotes.forEach((vote) => allUserIds.add(vote.userId)),
     );
-    return Math.max(...votersPerOption);
+    this.numVoters = allUserIds.size;
   }
 }
 

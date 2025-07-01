@@ -191,9 +191,7 @@ export const votingSelectHandler = async (
       stars: stars,
     });
 
-    await interaction.reply({
-      content: `You voted with ${stars} star${stars !== 1 ? "s" : ""}!`,
-      ephemeral: true,
-    });
+    // on normal vote there is no reply, but we need the `defer` otherwise discord thinks that the application is not responding
+    await interaction.deferUpdate();
   }
 };

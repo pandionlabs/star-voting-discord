@@ -35,10 +35,21 @@ export async function resultsCallback(
   );
 
   const [winner, preferedBy] = pollResults.winnerResult;
-  const nVotes = await pollResults.numVoters;
+  const nVotes = pollResults.numVoters;
+
+  // Truncate title length if too long
+  const maxTitleLength = 256; // Discord limit
+  const titlePrefix = "Poll Results: ";
+  const availableQuestionLength = maxTitleLength - titlePrefix.length;
+
+  let pollQuestionTitle = poll.question;
+  if (pollQuestionTitle.length > availableQuestionLength) {
+    pollQuestionTitle =
+      pollQuestionTitle.substring(0, availableQuestionLength - 3) + "...";
+  }
 
   const embed = new EmbedBuilder()
-    .setTitle(`Poll Results: ${poll.question}`)
+    .setTitle(`${titlePrefix}${pollQuestionTitle}`)
     .setDescription("Here are the results of your STAR voting poll.")
     .setColor("#FFD700") // Gold color for stars
     .addFields(
